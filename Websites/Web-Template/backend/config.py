@@ -25,3 +25,4 @@ PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
 
 ACCESS_CONTROL_CSV = DATA_DIR / 'access_control.csv'
 ACCOUNT_SYSTEM_URL = 'http://localhost:9999'
+MAIN_SITE_PORT = 5000

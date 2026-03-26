@@ -3,7 +3,6 @@ from flask_cors import CORS
 from flask_session import Session
 from functools import wraps
 import csv
-import requests
 from config import *
 
 app = Flask(__name__)
@@ -17,6 +16,9 @@ Session(app)
 
 DATA_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+# 主站位址（未登入時導回主站登入）
+MAIN_SITE_URL = f'http://{{}}:{MAIN_SITE_PORT}'
 
 
 # ============================================================
@@ -39,19 +41,8 @@ def image_files(filename):
 
 
 # ============================================================
-# 帳號系統整合
+# 白名單
 # ============================================================
-
-def verify_user(username: str, password: str) -> dict | None:
-    """向帳號系統驗證使用者"""
-    try:
-        response = requests.post(f'{ACCOUNT_SYSTEM_URL}/api/verify',
-                                 json={'username': username, 'password': password}, timeout=5)
-        data = response.json()
-        return data if data.get('success') else None
-    except:
-        return None
-
 
 def load_whitelist():
     """載入白名單，返回 set 或 None（允許所有人）"""
@@ -62,7 +53,15 @@ def load_whitelist():
         for row in csv.DictReader(f):
             if username := row.get('Username', '').strip():
                 whitelist.add(username)
-    return whitelist
+    return whitelist if whitelist else None
+
+
+def check_whitelist(username):
+    """檢查使用者是否在白名單中，無白名單則允許所有人"""
+    whitelist = load_whitelist()
+    if whitelist is None:
+        return True
+    return username in whitelist
 
 
 # ============================================================
@@ -70,21 +69,46 @@ def load_whitelist():
 # ============================================================
 
 def login_required(f):
-    """API路由：未登入返回 401"""
+    """API路由：未登入返回 401，不在白名單返回 403"""
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return jsonify({'error': '未登入'}), 401
+        if not check_whitelist(session.get('username', '')):
+            return jsonify({'error': '您沒有權限使用此應用'}), 403
         return f(*args, **kwargs)
     return decorated
 
 
 def page_login_required(f):
-    """頁面路由：未登入重導至 /"""
+    """頁面路由：未登入重導至主站，不在白名單顯示 403"""
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
-            return redirect('/')
+            # 導回主站登入頁
+            main_url = MAIN_SITE_URL.format(request.host.split(':')[0])
+            return redirect(main_url)
+        if not check_whitelist(session.get('username', '')):
+            return '''
+            <!DOCTYPE html>
+            <html lang="zh-TW">
+            <head><meta charset="UTF-8"><title>無權限</title>
+            <style>
+                body { font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f5; color: #333; }
+                .container { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                h1 { color: #721c24; margin-bottom: 12px; }
+                p { color: #666; margin-bottom: 20px; }
+                a { color: #00ACBB; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+            </head>
+            <body><div class="container">
+                <h1>⛔ 無權限</h1>
+                <p>您的帳號沒有權限使用此應用，請聯繫管理員。</p>
+                <a href="javascript:history.back()">← 返回上一頁</a>
+            </div></body>
+            </html>
+            ''', 403
         return f(*args, **kwargs)
     return decorated
 
@@ -95,7 +119,12 @@ def page_login_required(f):
 
 @app.route('/')
 def index():
-    return redirect('/home') if 'user_id' in session else send_from_directory(FRONTEND_DIR, 'login.html')
+    if 'user_id' not in session:
+        main_url = MAIN_SITE_URL.format(request.host.split(':')[0])
+        return redirect(main_url)
+    if not check_whitelist(session.get('username', '')):
+        return redirect('/no-access')
+    return redirect('/home')
 
 
 @app.route('/home')
@@ -104,31 +133,36 @@ def home():
     return send_from_directory(FRONTEND_DIR, 'home.html')
 
 
+@app.route('/no-access')
+def no_access():
+    if 'user_id' not in session:
+        main_url = MAIN_SITE_URL.format(request.host.split(':')[0])
+        return redirect(main_url)
+    return '''
+    <!DOCTYPE html>
+    <html lang="zh-TW">
+    <head><meta charset="UTF-8"><title>無權限</title>
+    <style>
+        body { font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f5; color: #333; }
+        .container { text-align: center; padding: 40px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #721c24; margin-bottom: 12px; }
+        p { color: #666; margin-bottom: 20px; }
+        a { color: #00ACBB; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+    </head>
+    <body><div class="container">
+        <h1>⛔ 無權限</h1>
+        <p>您的帳號沒有權限使用此應用，請聯繫管理員。</p>
+        <a href="javascript:history.back()">← 返回上一頁</a>
+    </div></body>
+    </html>
+    ''', 403
+
+
 # ============================================================
 # API 路由
 # ============================================================
-
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-
-    # 驗證帳密
-    result = verify_user(username, password)
-    if not result:
-        return jsonify({'error': '帳號或密碼錯誤'}), 401
-
-    # 檢查白名單
-    whitelist = load_whitelist()
-    if whitelist is not None and username not in whitelist:
-        return jsonify({'error': '您沒有權限進入此系統'}), 403
-
-    # 設定 session
-    session['user_id'] = result['user_id']
-    session['username'] = result['username']
-    return jsonify({'message': '登入成功'}), 200
-
 
 @app.route('/api/check-auth')
 @login_required
@@ -136,19 +170,10 @@ def check_auth():
     return jsonify({'authenticated': True, 'username': session['username']}), 200
 
 
-@app.route('/api/logout', methods=['POST'])
-@login_required
-def logout():
-    session.clear()
-    session.modified = True  # 確保 cookie 被正確清除
-    return jsonify({'message': '登出成功'}), 200
-
-
 # ============================================================
 # 啟動伺服器
 # ============================================================
 
 if __name__ == '__main__':
-    import os
     print(f"{Path(__file__).parent.parent.name}")
     app.run(host=HOST, port=PORT, debug=DEBUG)
