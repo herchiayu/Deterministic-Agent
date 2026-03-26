@@ -3,7 +3,7 @@ import os
 from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / '.env')
+load_dotenv(Path(__file__).parent / '.env')
 
 BACKEND_DIR = Path(__file__).parent
 PROJECT_ROOT = BACKEND_DIR.parent
