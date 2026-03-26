@@ -10,19 +10,37 @@
     <script src="https://cdn.jsdelivr.net/npm/highlight.js@11"></script>
 </head>
 <body>
-    <div class="header">
-        <h1>AI 聊天助手</h1>
-        <div class="header-actions">
-            <span id="username-display"></span>
-            <button onclick="clearChat()">清除記錄</button>
-            <button onclick="logout()">登出</button>
-        </div>
+    <div class="app-layout">
+        <!-- 側邊欄 -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <h2>應用清單</h2>
+                <button class="sidebar-toggle" onclick="toggleSidebar()" title="收合側邊欄">✕</button>
+            </div>
+            <ul id="app-list" class="app-list"></ul>
+        </aside>
+
+        <!-- 主內容區 -->
+        <main class="main-content">
+            <div class="header">
+                <div class="header-left">
+                    <button id="sidebar-open-btn" class="sidebar-open-btn" onclick="toggleSidebar()" title="展開側邊欄">☰</button>
+                    <h1>AI 聊天助手</h1>
+                </div>
+                <div class="header-actions">
+                    <span id="username-display"></span>
+                    <button onclick="clearChat()">清除記錄</button>
+                    <button onclick="logout()">登出</button>
+                </div>
+            </div>
+            <div id="chat-container" class="chat-container"></div>
+            <div class="input-area">
+                <textarea id="message-input" placeholder="輸入訊息… (Enter 發送，Shift+Enter 換行)" rows="1"></textarea>
+                <button id="send-btn" class="send-btn" onclick="sendMessage()">發送</button>
+            </div>
+        </main>
     </div>
-    <div id="chat-container" class="chat-container"></div>
-    <div class="input-area">
-        <textarea id="message-input" placeholder="輸入訊息… (Enter 發送，Shift+Enter 換行)" rows="1"></textarea>
-        <button id="send-btn" class="send-btn" onclick="sendMessage()">發送</button>
-    </div>
+    <div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
     <script src="/static/js/home.js"></script>
 </body>
 </html>

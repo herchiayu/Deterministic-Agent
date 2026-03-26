@@ -1,0 +1,13 @@
+__pycache__/
+.github/
+venv/
+.venv/
+env/
+ENV/
+backend/uploads/
+backend/flask_session/
+.env
+initiate_project.bat
+finalize_project.bat
+INSTRUCTIONS.md
+INSTRUCTIONS.pdf

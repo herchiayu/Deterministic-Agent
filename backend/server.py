@@ -169,6 +169,24 @@ def logout():
     return jsonify({'message': '登出成功'}), 200
 
 
+# ─── 網站清單 API ───
+
+@app.route('/api/apps')
+@login_required
+def get_apps():
+    """取得已註冊的網站清單"""
+    apps = []
+    if APP_REGISTRY_CSV.exists():
+        with open(APP_REGISTRY_CSV, 'r', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                name = row.get('Name', '').strip()
+                port = row.get('Port', '').strip()
+                description = row.get('Description', '').strip()
+                if name and port:
+                    apps.append({'name': name, 'port': port, 'description': description})
+    return jsonify({'apps': apps}), 200
+
+
 # ─── 聊天 API ───
 
 @app.route('/api/chat', methods=['POST'])

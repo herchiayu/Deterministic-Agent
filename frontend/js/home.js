@@ -14,6 +14,8 @@ marked.setOptions({
 const chatContainer = document.getElementById('chat-container');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
+const sidebar = document.getElementById('sidebar');
+const sidebarOverlay = document.getElementById('sidebar-overlay');
 
 // ─── 認證檢查 ───
 window.addEventListener('pageshow', async () => {
@@ -24,6 +26,7 @@ window.addEventListener('pageshow', async () => {
         const data = await response.json();
         document.getElementById('username-display').textContent = data.username;
         loadHistory();
+        loadApps();
     }
 });
 
@@ -200,3 +203,49 @@ async function logout() {
     await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
     window.location.replace('/');
 }
+
+// ─── 側邊欄：載入網站清單 ───
+async function loadApps() {
+    try {
+        const response = await fetch('/api/apps', { credentials: 'same-origin' });
+        if (!response.ok) return;
+        const data = await response.json();
+        const appList = document.getElementById('app-list');
+        appList.innerHTML = '';
+
+        if (data.apps.length === 0) {
+            appList.innerHTML = '<li class="app-list-empty">尚無註冊網站</li>';
+            return;
+        }
+
+        const currentHost = window.location.hostname;
+        data.apps.forEach(app => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `http://${currentHost}:${app.port}`;
+            a.target = '_blank';
+            a.textContent = app.name;
+            if (app.description) a.title = app.description;
+            li.appendChild(a);
+            appList.appendChild(li);
+        });
+    } catch (e) {
+        console.error('載入網站清單失敗:', e);
+    }
+}
+
+// ─── 側邊欄：收合/展開 ───
+function toggleSidebar() {
+    sidebar.classList.toggle('collapsed');
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+        sidebarOverlay.classList.toggle('active', !sidebar.classList.contains('collapsed'));
+    }
+}
+
+// 桌面版視窗縮放時關閉 overlay
+window.addEventListener('resize', () => {
+    if (window.innerWidth > 768) {
+        sidebarOverlay.classList.remove('active');
+    }
+});
