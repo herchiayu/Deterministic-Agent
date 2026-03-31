@@ -40,13 +40,28 @@ gemini_client = genai.Client(api_key=cfg.GEMINI_API_KEY)
 user_chats = {}
 
 
+def load_knowledge_base():
+    """讀取 resources/ 下所有 .md 和 .txt 檔案，合併為知識庫字串"""
+    contents = []
+    for ext in ('*.md', '*.txt'):
+        for f in sorted(cfg.KNOWLEDGE_BASE_DIR.glob(ext)):
+            contents.append(f.read_text(encoding='utf-8'))
+    return '\n\n'.join(contents)
+
+
+knowledge_base_content = load_knowledge_base()
+
+
 def get_or_create_chat(username):
     """取得或建立使用者的聊天 session"""
     if username not in user_chats:
+        instruction = cfg.GEMINI_SYSTEM_INSTRUCTION_TEMPLATE.format(
+            knowledge_base_content=knowledge_base_content
+        )
         user_chats[username] = gemini_client.chats.create(
             model=cfg.GEMINI_MODEL,
             config=types.GenerateContentConfig(
-                system_instruction=cfg.GEMINI_SYSTEM_INSTRUCTION
+                system_instruction=instruction
             )
         )
     return user_chats[username]
@@ -249,6 +264,16 @@ def chat_clear():
     if username in user_chats:
         del user_chats[username]
     return jsonify({'message': '聊天記錄已清除'}), 200
+
+
+@app.route('/api/chat/reload-kb', methods=['POST'])
+@login_required
+def reload_knowledge_base_api():
+    """重新載入知識庫，並清除所有使用者的聊天 session"""
+    global knowledge_base_content
+    knowledge_base_content = load_knowledge_base()
+    user_chats.clear()
+    return jsonify({'message': '知識庫已重新載入'}), 200
 
 
 if __name__ == '__main__':
