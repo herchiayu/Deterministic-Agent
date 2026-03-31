@@ -6,26 +6,27 @@ import csv
 import requests
 from google import genai
 from google.genai import types
-from config import *
+from config import config as cfg
 
 app = Flask(__name__)
 CORS(app)
 
-app.secret_key = SECRET_KEY
-app.config['SESSION_TYPE'] = SESSION_TYPE
-app.config['SESSION_FILE_DIR'] = str(SESSION_FILE_DIR)
-app.config['PERMANENT_SESSION_LIFETIME'] = PERMANENT_SESSION_LIFETIME
+app.secret_key = cfg.SECRET_KEY
+app.config['SESSION_TYPE'] = cfg.SESSION_TYPE
+app.config['SESSION_FILE_DIR'] = str(cfg.SESSION_FILE_DIR)
+app.config['PERMANENT_SESSION_LIFETIME'] = cfg.PERMANENT_SESSION_LIFETIME
 Session(app)
 
-DATA_DIR.mkdir(exist_ok=True)
-UPLOAD_DIR.mkdir(exist_ok=True)
-SESSION_FILE_DIR.mkdir(exist_ok=True)
+cfg.RESOURCE_DIR.mkdir(exist_ok=True)
+cfg.MODEL_DIR.mkdir(exist_ok=True)
+cfg.DATA_DIR.mkdir(exist_ok=True)
+cfg.SESSION_FILE_DIR.mkdir(exist_ok=True)
 
 
 # 啟動時清除所有 session 檔案（必須在 Session(app) 之後執行）
 def cleanup_all_sessions():
-    if SESSION_FILE_DIR.exists():
-        for f in SESSION_FILE_DIR.glob('*'):
+    if cfg.SESSION_FILE_DIR.exists():
+        for f in cfg.SESSION_FILE_DIR.glob('*'):
             if f.is_file():
                 f.unlink()
 
@@ -33,7 +34,7 @@ def cleanup_all_sessions():
 cleanup_all_sessions()
 
 # ─── Gemini 設定 ───
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = genai.Client(api_key=cfg.GEMINI_API_KEY)
 
 # 儲存每個使用者的 Gemini Chat Session
 user_chats = {}
@@ -43,9 +44,9 @@ def get_or_create_chat(username):
     """取得或建立使用者的聊天 session"""
     if username not in user_chats:
         user_chats[username] = gemini_client.chats.create(
-            model=GEMINI_MODEL,
+            model=cfg.GEMINI_MODEL,
             config=types.GenerateContentConfig(
-                system_instruction=GEMINI_SYSTEM_INSTRUCTION
+                system_instruction=cfg.GEMINI_SYSTEM_INSTRUCTION
             )
         )
     return user_chats[username]
@@ -55,7 +56,7 @@ def get_or_create_chat(username):
 
 def verify_user(username: str, password: str) -> dict | None:
     try:
-        response = requests.post(f'{ACCOUNT_SYSTEM_URL}/api/verify',
+        response = requests.post(f'{cfg.ACCOUNT_SYSTEM_URL}/api/verify',
                                  json={'username': username, 'password': password}, timeout=5)
         data = response.json()
         return data if data.get('success') else None
@@ -65,10 +66,10 @@ def verify_user(username: str, password: str) -> dict | None:
 
 def load_whitelist():
     """載入白名單，返回 set 或 None（允許所有人）"""
-    if not ACCESS_CONTROL_CSV.exists():
+    if not cfg.ACCESS_CONTROL_CSV.exists():
         return None
     whitelist = set()
-    with open(ACCESS_CONTROL_CSV, 'r', encoding='utf-8') as f:
+    with open(cfg.ACCESS_CONTROL_CSV, 'r', encoding='utf-8') as f:
         for row in csv.DictReader(f):
             if username := row.get('Username', '').strip():
                 whitelist.add(username)
@@ -101,30 +102,30 @@ def page_login_required(f):
 
 @app.route('/static/css/<path:filename>')
 def css_files(filename):
-    return send_from_directory(FRONTEND_DIR / 'css', filename)
+    return send_from_directory(cfg.FRONTEND_DIR / 'css', filename)
 
 
 @app.route('/static/js/<path:filename>')
 def js_files(filename):
-    return send_from_directory(FRONTEND_DIR / 'js', filename)
+    return send_from_directory(cfg.FRONTEND_DIR / 'js', filename)
 
 
 @app.route('/static/images/<path:filename>')
 def image_files(filename):
-    return send_from_directory(FRONTEND_DIR / 'images', filename)
+    return send_from_directory(cfg.FRONTEND_DIR / 'images', filename)
 
 
 # ─── 頁面路由 ───
 
 @app.route('/')
 def index():
-    return redirect('/home') if 'user_id' in session else send_from_directory(FRONTEND_DIR, 'login.html')
+    return redirect('/home') if 'user_id' in session else send_from_directory(cfg.FRONTEND_DIR, 'login.html')
 
 
 @app.route('/home')
 @page_login_required
 def home():
-    return send_from_directory(FRONTEND_DIR, 'home.html')
+    return send_from_directory(cfg.FRONTEND_DIR, 'home.html')
 
 
 # ─── 認證 API ───
@@ -176,8 +177,8 @@ def logout():
 def get_apps():
     """取得已註冊的網站清單"""
     apps = []
-    if APP_REGISTRY_CSV.exists():
-        with open(APP_REGISTRY_CSV, 'r', encoding='utf-8') as f:
+    if cfg.APP_REGISTRY_CSV.exists():
+        with open(cfg.APP_REGISTRY_CSV, 'r', encoding='utf-8') as f:
             for row in csv.DictReader(f):
                 name = row.get('Name', '').strip()
                 port = row.get('Port', '').strip()
@@ -199,7 +200,7 @@ def chat_api():
     if not message:
         return jsonify({'error': '訊息不可為空'}), 400
 
-    if not GEMINI_API_KEY:
+    if not cfg.GEMINI_API_KEY:
         return jsonify({'error': 'Gemini API Key 未設定，請在 config.py 或環境變數中設定 GEMINI_API_KEY'}), 500
 
     username = session['username']
@@ -251,5 +252,5 @@ def chat_clear():
 
 
 if __name__ == '__main__':
-    print(f"{Path(__file__).parent.parent.name}")
-    app.run(host=HOST, port=PORT, debug=DEBUG, use_reloader=False)
+    print(f"{cfg.PROJECT_ROOT.name}")
+    app.run(host=cfg.HOST, port=cfg.PORT, debug=cfg.DEBUG, use_reloader=False)

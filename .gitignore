@@ -4,7 +4,8 @@ venv/
 .venv/
 env/
 ENV/
-backend/uploads/
+backend/models/
+backend/data/
 backend/flask_session/
 .env
 initiate_project.bat
