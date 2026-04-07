@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知識庫管理</title>
+    <link rel="stylesheet" href="/static/css/home.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Header -->
+        <header class="header">
+            <h1>📁 知識庫管理</h1>
+            <div class="header-actions">
+                <span id="username-display"></span>
+                <button onclick="logout()">登出</button>
+            </div>
+        </header>
+
+        <!-- Content -->
+        <div class="content">
+            <!-- 左側：檔案面板 -->
+            <aside class="file-panel">
+                <div class="group-tabs" id="group-tabs"></div>
+                <div class="file-list" id="file-list"></div>
+                <button class="new-file-btn" id="new-file-btn" onclick="createNewFile()">+ 新增檔案</button>
+            </aside>
+
+            <!-- 右側：編輯器 -->
+            <main class="editor-panel" id="editor-panel">
+                <div class="editor-toolbar" id="editor-toolbar">
+                    <input type="text" id="filename-input" placeholder="檔案名稱（例：my_notes.md）" spellcheck="false">
+                    <button class="save-btn" onclick="saveFile()">💾 儲存</button>
+                    <button class="delete-btn" id="delete-btn" onclick="deleteFile()">🗑 刪除</button>
+                </div>
+                <textarea id="editor" placeholder="在此編輯內容..." spellcheck="false"></textarea>
+                <div id="status-bar" class="status-bar">就緒</div>
+            </main>
+        </div>
+    </div>
+    <script src="/static/js/home.js"></script>
+</body>
+</html>

@@ -1,235 +1,337 @@
 # Deterministic Agent
 
-基於 Flask 的多網站整合平台，提供統一登入、知識庫 AI 聊天助手（含工程計算工具），以及可擴充的子網站架構。
+一個基於 Gemini API 的企業內部 AI 問答平台，整合 RAG（向量知識庫）與 AFC（自動函式呼叫），並提供多使用者分群知識庫管理。
 
-## 功能
-
-- **統一登入** — 透過帳號系統（port 9999）驗證，所有子網站共享登入狀態（SSO）
-- **AI 聊天助手** — 串接 Gemini API，結合知識庫問答與工程計算工具
-- **子網站管理** — 側邊欄自動載入已註冊的子網站清單，一鍵跳轉
-- **權限控制** — 主站白名單控制系統登入，各子站可獨立設定白名單
-- **知識庫熱更新** — 修改知識庫文件後，透過 API 即時重載，無需重啟伺服器
-
-## 系統架構
-
-```
-帳號系統 (port 9999)
-     │
-     ▼
-主站 (port 9998) ─── AI 聊天助手 + 側邊欄
-     │
-     ├── 子站 A (port 5001)
-     ├── 子站 B (port 5002)
-     └── ...
-```
-
-## 快速開始
-
-### 1. 建立環境
-
-```bash
-py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -r backend\requirements.txt
-```
-
-### 2. 設定環境變數
-
-複製 `.env.example` 為 `.env`，填入實際值：
-
-```env
-SECRET_KEY=你的隨機金鑰
-GEMINI_API_KEY=你的_Google_AI_Studio_API_Key
-```
-
-### 3. 啟動
-
-```bash
-run_server.bat
-```
-
-此腳本會自動啟動主站與所有子網站。
+---
 
 ## 目錄結構
 
 ```
 Deterministic-Agent/
-├── .env                          # 環境變數（不版控）
-├── .env.example                  # 環境變數範本
-├── run_server.bat                # 一鍵啟動
-├── backend/                      # 主站後端 (port 9998)
-│   ├── server.py
+├── .env                         ← 環境變數（GEMINI_API_KEY、SECRET_KEY、INTERNAL_SECRET）
+├── README.md
+├── run_server.bat               ← 啟動主站（port 9998）
+├── initiate_project.bat         ← 初次建立虛擬環境與安裝套件
+├── finalize_project.bat
+│
+├── backend/                     ← 主站 Flask 後端
+│   ├── server.py                ← 主站入口（port 9998）
 │   ├── requirements.txt
 │   ├── config/
-│   │   ├── config.py             # 主站設定
-│   │   ├── access_control.csv    # 主站白名單
-│   │   └── app_registry.csv      # 子網站註冊表
+│   │   ├── config.py            ← 主站設定
+│   │   ├── access_control.csv   ← 使用者白名單與群組對照
+│   │   └── app_registry.csv     ← 子站清單（側欄顯示用）
 │   ├── utils/
-│   │   └── math_tools.py         # 工程計算工具（Function Calling）
-│   ├── data/                     # 知識庫文件 (.md / .txt)
-│   ├── resources/                # 程式靜態資源（唯讀）
-│   └── models/                   # 大型模型檔案（唯讀）
-├── frontend/                     # 主站前端
-│   ├── login.html
-│   ├── home.html
-│   ├── css/
-│   ├── js/
-│   └── images/
-└── Websites/                     # 子網站集合
-    ├── Web-Template/  (port 5001)
-    ├── Web-Template-2/ (port 5002)
-    └── Web-Template-3/ (port 5003)
+│   │   ├── knowledge_base.py    ← RAG 核心（ChromaDB + Gemini Embedding）
+│   │   └── math_tools.py        ← AFC 工程計算工具（供 Gemini 呼叫）
+│   ├── data/                    ← 知識庫根目錄
+│   │   ├── chroma_db/           ← ChromaDB 持久化（自動產生，勿手動修改）
+│   │   ├── default/
+│   │   │   └── system/
+│   │   │       └── notice.md    ← 無群組使用者看到的引導訊息
+│   │   ├── Developer/
+│   │   │   └── {username}/      ← 每位 Developer 成員的知識庫
+│   │   │       └── *.md / *.txt
+│   │   └── RD_ME/
+│   │       └── {username}/
+│   │           └── *.md / *.txt
+│   ├── flask_session/           ← Server-side Session 檔案（自動產生）
+│   ├── models/                  ← 保留目錄
+│   └── resources/               ← 保留目錄
+│
+├── frontend/                    ← 主站前端
+│   ├── login.html / login.js / login.css
+│   └── home.html / home.js / home.css
+│
+└── Websites/                    ← 子站群
+    ├── Web-Template/            ← 子站模板（參考用）
+    └── Knowledge-Base-Manager/  ← 知識庫管理子站（port 9997）
+        ├── backend/
+        │   ├── server.py
+        │   └── config/
+        │       ├── config.py    ← 子站設定（含主站路徑與 IP 設定）
+        │       └── access_control.csv
+        └── frontend/
+            ├── home.html / home.js / home.css
+            └── images/
 ```
 
 ---
 
-## AI 聊天助手運作原理
+## 快速啟動
 
-AI 助手結合了兩種能力：**知識庫問答（RAG）** 和 **工程計算工具（Function Calling）**。
+### 1. 環境設定
 
-### 整體流程
+專案根目錄建立 `.env` 檔，填入以下變數：
 
-```
-使用者提問
-    │
-    ▼
-Gemini 收到訊息 + System Instruction（含知識庫全文 + 工具清單）
-    │
-    ▼
-Gemini 判斷問題類型
-    │
-    ├─ 知識庫能回答 ──→ 直接從知識庫內容引用回答
-    │
-    ├─ 需要計算 ──→ 呼叫工具函數 ──→ SDK 自動執行 ──→ 回傳結果 ──→ Gemini 組合回答
-    │
-    └─ 都不適用 ──→ 回覆「不在知識範圍內」
+```env
+GEMINI_API_KEY=your_gemini_api_key
+SECRET_KEY=your_flask_secret_key
+INTERNAL_SECRET=deterministic-agent-internal
 ```
 
-### 知識庫問答（RAG）
+> `INTERNAL_SECRET` 預設值即 `deterministic-agent-internal`，可直接沿用或自訂。
+> `SECRET_KEY` 主站與所有子站必須**相同**，否則 Session 無法共用。
 
-**原理**：將知識庫全文塞進 Gemini 的 System Instruction，限定 AI 只能根據知識庫內容回答。
+### 2. 初次安裝
 
-**資料流**：
-
-```
-伺服器啟動
-    │
-    ▼
-load_knowledge_base()
-    │  讀取 backend/data/ 下所有 .md 和 .txt 檔案
-    │  依檔名排序後合併為一個字串
-    ▼
-組合 System Instruction
-    │  GEMINI_SYSTEM_INSTRUCTION_TEMPLATE.format(knowledge_base_content=...)
-    │  模板內容：
-    │    - 限定只能根據知識庫回答
-    │    - 無法回答時拒答
-    │    - 不可編造資訊
-    │    - 有計算工具可用時呼叫工具
-    ▼
-建立 Chat Session（每位使用者獨立）
+```bat
+initiate_project.bat
 ```
 
-**相關檔案**：
-| 檔案 | 角色 |
-|------|------|
-| `backend/data/*.md`, `*.txt` | 知識庫文件 |
-| `config/config.py` — `KNOWLEDGE_BASE_DIR` | 知識庫目錄路徑 |
-| `config/config.py` — `GEMINI_SYSTEM_INSTRUCTION_TEMPLATE` | 包含知識庫的 System Instruction 模板 |
-| `server.py` — `load_knowledge_base()` | 讀取並合併知識庫檔案 |
-| `server.py` — `POST /api/chat/reload-kb` | 熱更新知識庫（不用重啟伺服器） |
+此 bat 會建立 `.venv/` 虛擬環境並安裝 `backend/requirements.txt`。
 
-**更新知識庫**：
-- 編輯 `backend/data/` 下的檔案
-- 呼叫 `POST /api/chat/reload-kb` 即可熱更新
-- 這會重新讀取所有檔案，並清除所有使用者的 chat session（讓新知識庫生效）
+### 3. 啟動主站
 
-### 工程計算工具（Function Calling）
-
-**原理**：使用 Gemini 的 Automatic Function Calling (AFC)。將 Python 函數直接傳給 Gemini，Gemini 判斷需要計算時自動呼叫，SDK 在本機執行函數並將結果回傳給 Gemini 組合成自然語言回答。
-
-**資料流**：
-
-```
-使用者: 「馬赫數 2.0 的壓力比是多少？」
-    │
-    ▼
-chat.send_message("馬赫數 2.0 的壓力比是多少？")
-    │
-    ▼
-Gemini 分析 → 決定呼叫 isentropic_pressure_ratio(mach=2.0)
-    │
-    ▼
-SDK 自動在本機執行該函數 → 回傳 {'pressure_ratio': 7.824608, ...}
-    │
-    ▼
-SDK 自動將結果送回 Gemini
-    │
-    ▼
-Gemini 組合最終回答:
-    「在馬赫數 2.0、γ=1.4 的條件下，
-     等熵流壓力比 PR = 7.824608
-     使用公式：PR = (1 + (γ-1)/2 × M²) ^ (γ/(γ-1))」
+```bat
+run_server.bat
 ```
 
-**關鍵機制**：
-- AFC 靠函數的 **名稱**、**type hints**、**docstring** 讓 Gemini 理解函數用途
-- 計算完全在本機執行，公式由你掌控，100% 確定性
-- Gemini 只負責「判斷要呼叫什麼」和「將結果組合成自然語言」
+主站啟動於 **port 9998**，啟動時會自動建立所有群組的 ChromaDB 向量索引。
 
-**相關檔案**：
-| 檔案 | 角色 |
-|------|------|
-| `backend/utils/math_tools.py` | 計算函數定義 + `TOOL_FUNCTIONS` 註冊表 |
-| `server.py` — `get_or_create_chat()` | 將 `TOOL_FUNCTIONS` 傳入 `tools` 參數 |
+### 4. 啟動子站（Knowledge-Base-Manager）
 
-### 新增計算工具（開發指南）
-
-只需編輯 `backend/utils/math_tools.py`，三步完成：
-
-**第一步：寫計算函數**
-
-```python
-def my_new_calculator(param_a: float, param_b: float = 1.0) -> dict:
-    """
-    函數說明（Gemini 讀這段來理解功能）
-    寫清楚這個函數算什麼、公式是什麼
-    """
-    result = param_a * param_b  # 你的計算邏輯
-    return {
-        'param_a': param_a,
-        'param_b': param_b,
-        'result': round(result, 6),
-        'formula': 'Result = A × B'
-    }
+```bat
+cd Websites\Knowledge-Base-Manager\backend
+python server.py
 ```
 
-**必要條件**（AFC 依賴這些資訊）：
-- ✅ 參數必須有 **type hints**（`float`, `str`, `int` 等）
-- ✅ 必須有 **docstring** 描述功能
-- ✅ 回傳 `dict`
-- 選用預設值的參數，使用者可省略
-
-**第二步：加入 TOOL_FUNCTIONS**
-
-```python
-TOOL_FUNCTIONS = [
-    isentropic_pressure_ratio,
-    isentropic_temperature_ratio,
-    my_new_calculator,           # ← 加在這裡
-]
-```
-
-**第三步：重啟伺服器**
-
-不需要改 `server.py` 或 `config.py`。
+子站啟動於 **port 9997**，需在主站已啟動的情況下使用（儲存／刪除後會呼叫主站重建索引）。
 
 ---
 
-## 新增子網站
+## 帳號系統
 
-詳見 [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)。
+主站透過外部帳號服務驗證登入（`POST http://localhost:9999/api/verify`），此服務需獨立部署。
 
-## 開發規範
+### 白名單與群組（`backend/config/access_control.csv`）
 
-詳見 `.github/DEVELOPER_SPEC.md`。
+```csv
+Username,Groups
+Herch,Developer;RD_ME
+User_All,Developer;RD_ME
+User_RD,RD_ME
+User_Dev,Developer
+User_None,
+```
+
+- `Groups` 欄位用 `;` 分隔多個群組。
+- 若 `Groups` 為空，使用者被分配至 `default` 群組。
+- 若 `access_control.csv` 不存在，則不啟用白名單（所有登入者皆可進入）。
+
+### Session 共用機制（SSO）
+
+所有子站皆使用 **filesystem session**，Session 檔案儲存於主站的 `backend/flask_session/` 目錄。子站的 `config.py` 中 `SESSION_FILE_DIR` 指向此目錄，且 `SECRET_KEY` 必須與主站相同，才能讀取同一個 Session。
+
+---
+
+## 知識庫架構
+
+### 目錄結構（兩層）
+
+```
+backend/data/
+├── chroma_db/               ← 向量資料庫（per-group collection）
+├── {group}/
+│   ├── system/              ← 保留，僅供系統管理員手動放置（uploader='system'）
+│   │   └── notice.md
+│   └── {username}/          ← 每位使用者的個人資料夾
+│       └── *.md / *.txt
+```
+
+> **`system/` 為保留字**，禁止透過 Knowledge-Base-Manager 建立或刪除此目錄下的檔案。
+
+### 群組隔離規則
+
+| 情境 | 行為 |
+|------|------|
+| 使用者屬於 `RD_ME` 群組 | 只能看到 `RD_ME/` 下所有成員的知識 |
+| 使用者屬於多個群組 | 查詢時合併所有群組的知識庫 |
+| 使用者無群組（`default`） | 只能看到 `default/system/notice.md` |
+| 知識衝突（不同來源說法不同） | AI 分別列出各方說法與來源，不自行裁定 |
+
+### AI 回應格式
+
+AI 引用知識庫時，每段資料標記為：
+
+```
+[來源: 檔名 | 上傳者: 使用者名稱]
+```
+
+例如：`[來源: DEVELOPER_SPEC.md | 上傳者: Herch]`
+
+### ChromaDB Collection 命名
+
+每個群組對應一個 collection，名稱即群組名稱（如 `Developer`、`RD_ME`、`default`）。Chunk ID 格式為 `{uploader}/{filename}::chunk_{n}`。
+
+---
+
+## 子站清單（`backend/config/app_registry.csv`）
+
+主站側欄的「應用清單」由此 CSV 驅動：
+
+```csv
+Name,Port,Description
+Knowledge-Base-Manager,9997,知識庫管理
+```
+
+- `Name`：子站顯示名稱
+- `Port`：子站 port（使用者點擊後會在同一 IP 的此 port 開啟新分頁）
+- `Description`：說明文字
+
+新增子站時，將其加入此 CSV 並在 `Websites/` 下建立對應的 Flask app 即可。
+
+---
+
+## API 總覽
+
+### 主站（port 9998）
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| `POST` | `/api/login` | 登入（呼叫外部帳號服務，寫入 session） |
+| `GET` | `/api/check-auth` | 確認是否已登入 |
+| `POST` | `/api/logout` | 登出（清除 session 與聊天記錄） |
+| `GET` | `/api/apps` | 取得 app_registry.csv 的子站清單 |
+| `POST` | `/api/chat` | 傳送訊息（Streaming response，含 RAG + AFC） |
+| `GET` | `/api/chat/history` | 取得目前使用者的聊天記錄 |
+| `POST` | `/api/chat/clear` | 清除目前使用者的聊天記錄 |
+| `POST` | `/api/chat/reload-kb` | 強制重建所有群組的知識庫索引（需登入） |
+| `POST` | `/api/internal/rebuild-group` | **內部用**：重建指定群組的索引（需 `X-Internal-Secret` header） |
+
+#### Internal API 說明
+
+子站呼叫主站重建索引：
+
+```http
+POST http://localhost:9998/api/internal/rebuild-group
+X-Internal-Secret: {INTERNAL_SECRET}
+Content-Type: application/json
+
+{"group": "Developer"}
+```
+
+### Knowledge-Base-Manager（port 9997）
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| `GET` | `/api/check-auth` | 確認登入狀態（含 groups） |
+| `POST` | `/api/logout` | 登出 |
+| `GET` | `/api/files?group={group}` | 列出使用者在指定群組的檔案 |
+| `GET` | `/api/file/content?group={group}&name={file}` | 讀取檔案內容 |
+| `POST` | `/api/file` | 新增或更新檔案（儲存後自動重建索引） |
+| `DELETE` | `/api/file` | 刪除檔案（刪除後自動重建索引） |
+
+---
+
+## 核心模組
+
+### `backend/utils/knowledge_base.py`
+
+```python
+from utils.knowledge_base import kb
+
+kb.build_all_indexes()                                    # 啟動時建立所有群組索引
+kb.build_all_indexes(force_rebuild=True)                  # 強制重建所有索引
+kb.build_group_index('Developer', force_rebuild=True)     # 重建單一群組
+results = kb.search("問題", groups=['RD_ME'])              # 向量檢索（回傳格式化字串）
+```
+
+**`search()` 回傳格式：**
+
+```
+[來源: filename | 上傳者: uploader]
+{chunk 內容}
+
+[來源: ...]
+...
+```
+
+### `backend/utils/math_tools.py`
+
+定義供 Gemini AFC 呼叫的工程計算函式（如爬電距離計算等）。新增工具時，在此模組定義函式並加入 `TOOL_FUNCTIONS` 清單。
+
+---
+
+## 設定檔說明
+
+### 主站 `backend/config/config.py`
+
+| 變數 | 說明 |
+|------|------|
+| `PORT` | `9998` |
+| `GEMINI_MODEL` | `gemini-2.5-flash` |
+| `ENABLE_KNOWLEDGE_BASE` | `True`；設為 `False` 可跳過 RAG |
+| `DEFAULT_GROUP` | `'default'`（無群組使用者的預設群組） |
+| `GROUP_SEPARATOR` | `';'`（access_control.csv 中的群組分隔符） |
+| `EMBEDDING_MODEL` | `gemini-embedding-001` |
+| `CHUNK_SIZE` | `500`（每段最大字元數） |
+| `CHUNK_OVERLAP` | `50`（段落重疊字元數） |
+| `TOP_K_RESULTS` | `5`（每次檢索回傳段落數） |
+| `INTERNAL_SECRET` | 讀自 `.env`，預設 `deterministic-agent-internal` |
+
+### Knowledge-Base-Manager `Websites/Knowledge-Base-Manager/backend/config/config.py`
+
+| 變數 | 說明 |
+|------|------|
+| `PORT` | `9997` |
+| `SERVER_IP` | 部署時改為實際伺服器 IP（目前預設 `192.168.18.6`） |
+| `MAIN_SITE_PORT` | `9998` |
+| `MAIN_PROJECT_ROOT` | `PROJECT_ROOT.parent.parent`（即 `Deterministic-Agent/`） |
+| `KNOWLEDGE_BASE_DIR` | `MAIN_PROJECT_ROOT/backend/data` |
+| `SESSION_FILE_DIR` | `MAIN_PROJECT_ROOT/backend/flask_session` |
+| `ALLOWED_EXTENSIONS` | `{'.md', '.txt'}` |
+| `MAX_FILE_SIZE` | `1MB` |
+
+---
+
+## 新增群組流程
+
+1. 在 `backend/config/access_control.csv` 新增使用者並設定群組名稱。
+2. 建立對應的知識庫目錄（Knowledge-Base-Manager 儲存時會自動建立，也可手動建立）：
+   ```
+   backend/data/{新群組名稱}/{username}/
+   ```
+3. 若有系統預設知識，手動放置於 `backend/data/{新群組名稱}/system/` 下。
+4. 重啟主站，或呼叫 `POST /api/chat/reload-kb` 重建索引。
+
+---
+
+## 新增子站流程
+
+1. 複製 `Websites/Web-Template/` 為新子站目錄。
+2. 修改 `backend/config/config.py` 中的 `PORT`、`SERVER_IP`、`MAIN_SITE_PORT`。
+3. 確認 `SESSION_FILE_DIR` 指向主站的 `backend/flask_session/`，`SECRET_KEY` 與主站相同。
+4. 在主站的 `backend/config/app_registry.csv` 新增一筆記錄。
+
+---
+
+## RAG 運作原理
+
+1. **建立索引**：啟動時掃描 `data/{group}/{username}/*.md|*.txt`，切段後呼叫 Gemini Embedding API 向量化，存入 ChromaDB（per-group collection）。
+2. **查詢流程**：使用者提問 → 向量化問題 → 從使用者所屬群組的 collection 檢索前 `TOP_K_RESULTS` 段 → 包裝成 `RAG_QUERY_TEMPLATE` → 傳給 Gemini。
+3. **AFC 整合**：Gemini 若判斷需要工程計算，自動呼叫 `math_tools.py` 中定義的函式，取得精確結果後繼續生成回答。
+
+---
+
+## AFC 工程計算工具
+
+`backend/utils/math_tools.py` 中定義的函式會自動成為 Gemini 可呼叫的工具。新增工具方式：
+
+```python
+# math_tools.py
+def my_tool(param: float) -> float:
+    """工具說明（Gemini 依此判斷何時呼叫）"""
+    return param * 2
+
+TOOL_FUNCTIONS = [my_tool, ...]  # 加入此清單
+```
+
+---
+
+## 注意事項
+
+- **ChromaDB 在 Windows 下有檔案鎖定問題**：主站運行中若強制刪除 `chroma_db/` 目錄下的子目錄會拋出 `PermissionError`，應使用 `force_rebuild=True` 而非手動刪除。
+- **啟動時清除所有 Session**：主站每次啟動都會清除 `flask_session/` 下的所有 Session 檔案（`cleanup_all_sessions()`），所有使用者需重新登入。
+- **子站不直接 import 主站模組**：子站透過 Internal API（HTTP）觸發主站重建索引，而非直接 import `knowledge_base.py`。
+- **`default` 群組特殊處理**：Knowledge-Base-Manager 不允許使用者操作 `default` 群組的檔案（`_validate_group_access` 會拒絕），避免誤改系統引導訊息。
