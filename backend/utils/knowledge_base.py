@@ -53,10 +53,10 @@ class KnowledgeBase:
 
     # ─── 文件切段 ───
 
-    def chunk_document(self, text: str, filename: str) -> list[dict]:
+    def chunk_document(self, text: str, filename: str, uploader: str = 'system') -> list[dict]:
         """
         將文件依 Markdown 標題切段。
-        回傳格式：[{'id': ..., 'text': ..., 'source': ...}, ...]
+        回傳格式：[{'id': ..., 'text': ..., 'source': ..., 'uploader': ...}, ...]
         """
         chunks = []
         sections = re.split(r'(?=^#{1,3}\s)', text, flags=re.MULTILINE)
@@ -70,15 +70,17 @@ class KnowledgeBase:
                 sub_chunks = self._split_by_size(section)
                 for j, sub in enumerate(sub_chunks):
                     chunks.append({
-                        'id': f'{filename}::chunk_{i}_{j}',
+                        'id': f'{uploader}/{filename}::chunk_{i}_{j}',
                         'text': sub,
                         'source': filename,
+                        'uploader': uploader,
                     })
             else:
                 chunks.append({
-                    'id': f'{filename}::chunk_{i}',
+                    'id': f'{uploader}/{filename}::chunk_{i}',
                     'text': section,
                     'source': filename,
+                    'uploader': uploader,
                 })
 
         return chunks
@@ -149,14 +151,18 @@ class KnowledgeBase:
             print(f'[知識庫] {group} 索引已存在（{collection.count()} 段），跳過')
             return
 
-        # 讀取該群組目錄下的所有 .md / .txt
+        # 讀取該群組目錄下的所有 {username}/*.md|*.txt
         all_chunks = []
         if group_dir.exists():
-            for ext in ('*.md', '*.txt'):
-                for f in sorted(group_dir.glob(ext)):
-                    text = f.read_text(encoding='utf-8')
-                    chunks = self.chunk_document(text, f.name)
-                    all_chunks.extend(chunks)
+            for user_dir in sorted(group_dir.iterdir()):
+                if not user_dir.is_dir():
+                    continue
+                uploader = user_dir.name
+                for ext in ('*.md', '*.txt'):
+                    for f in sorted(user_dir.glob(ext)):
+                        text = f.read_text(encoding='utf-8')
+                        chunks = self.chunk_document(text, f.name, uploader)
+                        all_chunks.extend(chunks)
 
         if not all_chunks:
             print(f'[知識庫] {group} 沒有知識庫文件')
@@ -171,7 +177,7 @@ class KnowledgeBase:
             ids=[c['id'] for c in all_chunks],
             documents=texts,
             embeddings=embeddings,
-            metadatas=[{'source': c['source']} for c in all_chunks],
+            metadatas=[{'source': c['source'], 'uploader': c['uploader']} for c in all_chunks],
         )
 
         print(f'[知識庫] {group} 索引建立完成，共 {collection.count()} 段')
@@ -203,7 +209,7 @@ class KnowledgeBase:
         query_embedding = self._embed_texts([query])[0]
 
         # 從每個群組的 collection 搜尋
-        all_results = []  # [(distance, document)]
+        all_results = []  # [(distance, document, source, uploader)]
         for group in groups:
             collection = self._get_collection(group)
             if collection.count() == 0:
@@ -212,12 +218,20 @@ class KnowledgeBase:
             results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=min(top_k, collection.count()),
-                include=['documents', 'distances'],
+                include=['documents', 'distances', 'metadatas'],
             )
 
             if results['documents'] and results['distances']:
-                for doc, dist in zip(results['documents'][0], results['distances'][0]):
-                    all_results.append((dist, doc))
+                for doc, dist, meta in zip(
+                    results['documents'][0],
+                    results['distances'][0],
+                    results['metadatas'][0],
+                ):
+                    all_results.append((
+                        dist, doc,
+                        meta.get('source', ''),
+                        meta.get('uploader', ''),
+                    ))
 
         if not all_results:
             return ''
@@ -225,9 +239,13 @@ class KnowledgeBase:
         # 依距離排序（cosine distance 越小越相似）
         all_results.sort(key=lambda x: x[0])
 
-        # 取前 top_k 段
-        top_docs = [doc for _, doc in all_results[:top_k]]
-        return '\n\n---\n\n'.join(top_docs)
+        # 取前 top_k 段，附帶來源與上傳者標示
+        segments = []
+        for _, doc, source, uploader in all_results[:top_k]:
+            header = f'[來源: {source} | 上傳者: {uploader}]'
+            segments.append(f'{header}\n{doc}')
+
+        return '\n\n---\n\n'.join(segments)
 
 
 # 全域單例

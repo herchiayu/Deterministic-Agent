@@ -295,6 +295,21 @@ def reload_knowledge_base_api():
     return jsonify({'message': '知識庫已重新載入'}), 200
 
 
+@app.route('/api/internal/rebuild-group', methods=['POST'])
+def internal_rebuild_group():
+    """子站呼叫：重建特定群組的知識庫索引"""
+    secret = request.headers.get('X-Internal-Secret', '')
+    if secret != cfg.INTERNAL_SECRET:
+        return jsonify({'error': 'Unauthorized'}), 401
+    data = request.json or {}
+    group = data.get('group', '').strip()
+    if not group:
+        return jsonify({'error': 'Missing group'}), 400
+    kb.build_group_index(group, force_rebuild=True)
+    return jsonify({'message': f'{group} index rebuilt'}), 200
+
+
+
 if __name__ == '__main__':
     print(f"{cfg.PROJECT_ROOT.name}")
     app.run(host=cfg.HOST, port=cfg.PORT, debug=cfg.DEBUG, use_reloader=False)
