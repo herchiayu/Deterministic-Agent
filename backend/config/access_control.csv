@@ -1,2 +1,6 @@
-Username
-Herch
+Username,Groups
+Herch,Developer;RD_ME
+User_All,Developer;RD_ME
+User_RD,RD_ME
+User_Dev,Developer
+User_None,

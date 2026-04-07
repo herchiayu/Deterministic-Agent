@@ -7,6 +7,8 @@ import requests
 from google import genai
 from google.genai import types
 from config import config as cfg
+from utils.math_tools import TOOL_FUNCTIONS
+from utils.knowledge_base import kb
 
 app = Flask(__name__)
 CORS(app)
@@ -40,28 +42,23 @@ gemini_client = genai.Client(api_key=cfg.GEMINI_API_KEY)
 user_chats = {}
 
 
-def load_knowledge_base():
-    """讀取 resources/ 下所有 .md 和 .txt 檔案，合併為知識庫字串"""
-    contents = []
-    for ext in ('*.md', '*.txt'):
-        for f in sorted(cfg.KNOWLEDGE_BASE_DIR.glob(ext)):
-            contents.append(f.read_text(encoding='utf-8'))
-    return '\n\n'.join(contents)
-
-
-knowledge_base_content = load_knowledge_base()
+# 啟動時建立知識庫向量索引
+if cfg.ENABLE_KNOWLEDGE_BASE:
+    kb.build_all_indexes()
 
 
 def get_or_create_chat(username):
     """取得或建立使用者的聊天 session"""
     if username not in user_chats:
-        instruction = cfg.GEMINI_SYSTEM_INSTRUCTION_TEMPLATE.format(
-            knowledge_base_content=knowledge_base_content
-        )
+        if cfg.ENABLE_KNOWLEDGE_BASE:
+            instruction = cfg.GEMINI_SYSTEM_INSTRUCTION
+        else:
+            instruction = cfg.GEMINI_SYSTEM_INSTRUCTION_NO_KB
         user_chats[username] = gemini_client.chats.create(
             model=cfg.GEMINI_MODEL,
             config=types.GenerateContentConfig(
-                system_instruction=instruction
+                system_instruction=instruction,
+                tools=TOOL_FUNCTIONS,
             )
         )
     return user_chats[username]
@@ -80,15 +77,23 @@ def verify_user(username: str, password: str) -> dict | None:
 
 
 def load_whitelist():
-    """載入白名單，返回 set 或 None（允許所有人）"""
+    """載入白名單與群組對照，回傳 (whitelist_set, groups_dict) 或 (None, {})"""
     if not cfg.ACCESS_CONTROL_CSV.exists():
-        return None
+        return None, {}
     whitelist = set()
+    groups_map = {}  # {username: [group1, group2, ...]}
     with open(cfg.ACCESS_CONTROL_CSV, 'r', encoding='utf-8') as f:
         for row in csv.DictReader(f):
             if username := row.get('Username', '').strip():
                 whitelist.add(username)
-    return whitelist
+                raw_groups = row.get('Groups', '').strip()
+                if raw_groups:
+                    groups_map[username] = [
+                        g.strip() for g in raw_groups.split(cfg.GROUP_SEPARATOR) if g.strip()
+                    ]
+                else:
+                    groups_map[username] = [cfg.DEFAULT_GROUP]
+    return whitelist, groups_map
 
 
 # ─── 裝飾器 ───
@@ -157,13 +162,14 @@ def api_login():
         return jsonify({'error': '帳號或密碼錯誤'}), 401
 
     # 檢查白名單
-    whitelist = load_whitelist()
+    whitelist, groups_map = load_whitelist()
     if whitelist is not None and username not in whitelist:
         return jsonify({'error': '您沒有權限進入此系統'}), 403
 
     # 設定 session
     session['user_id'] = result['user_id']
     session['username'] = result['username']
+    session['groups'] = groups_map.get(username, [cfg.DEFAULT_GROUP])
     return jsonify({'message': '登入成功'}), 200
 
 
@@ -208,7 +214,7 @@ def get_apps():
 @app.route('/api/chat', methods=['POST'])
 @login_required
 def chat_api():
-    """傳送訊息給 Gemini，以串流方式回傳回應"""
+    """傳送訊息給 Gemini，處理 function calling 後回傳回應"""
     data = request.json
     message = data.get('message', '').strip()
 
@@ -221,11 +227,25 @@ def chat_api():
     username = session['username']
     chat_session = get_or_create_chat(username)
 
+    # 若啟用知識庫，先檢索相關段落並包裝訊息
+    if cfg.ENABLE_KNOWLEDGE_BASE:
+        user_groups = session.get('groups', [cfg.DEFAULT_GROUP])
+        context = kb.search(message, groups=user_groups)
+        wrapped_message = cfg.RAG_QUERY_TEMPLATE.format(
+            context=context if context else '（無相關參考資料）',
+            question=message,
+        )
+    else:
+        wrapped_message = message
+
     def generate():
         try:
-            for chunk in chat_session.send_message_stream(message):
-                if chunk.text:
-                    yield chunk.text
+            # AFC (Automatic Function Calling) 會自動執行函數並回傳最終結果
+            response = chat_session.send_message(wrapped_message)
+
+            if response.text:
+                yield response.text
+
         except Exception as e:
             error_msg = str(e)
             if '429' in error_msg or 'quota' in error_msg.lower():
@@ -269,9 +289,8 @@ def chat_clear():
 @app.route('/api/chat/reload-kb', methods=['POST'])
 @login_required
 def reload_knowledge_base_api():
-    """重新載入知識庫，並清除所有使用者的聊天 session"""
-    global knowledge_base_content
-    knowledge_base_content = load_knowledge_base()
+    """重建知識庫向量索引，並清除所有使用者的聊天 session"""
+    kb.build_all_indexes(force_rebuild=True)
     user_chats.clear()
     return jsonify({'message': '知識庫已重新載入'}), 200
 
