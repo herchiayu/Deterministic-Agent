@@ -34,7 +34,8 @@ GEMINI_MODEL = 'gemini-2.5-flash'
 # 知識庫設定
 ENABLE_KNOWLEDGE_BASE = True          # 設為 False 可關閉知識庫，測試純 Gemini 回答
 KNOWLEDGE_BASE_DIR = DATA_DIR
-DEFAULT_GROUP = 'default'             # 無群組使用者的預設群組
+PUBLIC_GROUP = 'Public'               # 所有名單上的使用者皆可讀取
+ALL_GROUPS_KEYWORD = 'All'            # CSV 中代表「所有群組」的關鍵字
 GROUP_SEPARATOR = ';'                 # access_control.csv 中群組分隔符號
 
 # 向量資料庫設定

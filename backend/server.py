@@ -7,6 +7,7 @@ import requests
 from google import genai
 from google.genai import types
 from config import config as cfg
+from config import load_access_control
 from utils.math_tools import TOOL_FUNCTIONS
 from utils.knowledge_base import kb
 
@@ -76,26 +77,6 @@ def verify_user(username: str, password: str) -> dict | None:
         return None
 
 
-def load_whitelist():
-    """載入白名單與群組對照，回傳 (whitelist_set, groups_dict) 或 (None, {})"""
-    if not cfg.ACCESS_CONTROL_CSV.exists():
-        return None, {}
-    whitelist = set()
-    groups_map = {}  # {username: [group1, group2, ...]}
-    with open(cfg.ACCESS_CONTROL_CSV, 'r', encoding='utf-8') as f:
-        for row in csv.DictReader(f):
-            if username := row.get('Username', '').strip():
-                whitelist.add(username)
-                raw_groups = row.get('Groups', '').strip()
-                if raw_groups:
-                    groups_map[username] = [
-                        g.strip() for g in raw_groups.split(cfg.GROUP_SEPARATOR) if g.strip()
-                    ]
-                else:
-                    groups_map[username] = [cfg.DEFAULT_GROUP]
-    return whitelist, groups_map
-
-
 # ─── 裝飾器 ───
 
 def login_required(f):
@@ -162,14 +143,16 @@ def api_login():
         return jsonify({'error': '帳號或密碼錯誤'}), 401
 
     # 檢查白名單
-    whitelist, groups_map = load_whitelist()
+    whitelist, permissions = load_access_control()
     if whitelist is not None and username not in whitelist:
         return jsonify({'error': '您沒有權限進入此系統'}), 403
 
-    # 設定 session
+    # 設定 session（讀寫權限分離）
+    user_perm = permissions.get(username, {'read': [cfg.PUBLIC_GROUP], 'write': []})
     session['user_id'] = result['user_id']
     session['username'] = result['username']
-    session['groups'] = groups_map.get(username, [cfg.DEFAULT_GROUP])
+    session['read_groups'] = user_perm['read']
+    session['write_groups'] = user_perm['write']
     return jsonify({'message': '登入成功'}), 200
 
 
@@ -229,7 +212,7 @@ def chat_api():
 
     # 若啟用知識庫，先檢索相關段落並包裝訊息
     if cfg.ENABLE_KNOWLEDGE_BASE:
-        user_groups = session.get('groups', [cfg.DEFAULT_GROUP])
+        user_groups = session.get('read_groups', [cfg.PUBLIC_GROUP])
         context = kb.search(message, groups=user_groups)
         wrapped_message = cfg.RAG_QUERY_TEMPLATE.format(
             context=context if context else '（無相關參考資料）',

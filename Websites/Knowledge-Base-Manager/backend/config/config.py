@@ -28,11 +28,9 @@ SESSION_TYPE = 'filesystem'
 SESSION_FILE_DIR = MAIN_PROJECT_ROOT / 'backend' / 'flask_session'
 PERMANENT_SESSION_LIFETIME = timedelta(hours=12)
 
-ACCESS_CONTROL_CSV = CONFIG_DIR / 'access_control.csv'
-
 # 知識庫設定（指向主專案的 data 目錄）
 KNOWLEDGE_BASE_DIR = MAIN_PROJECT_ROOT / 'backend' / 'data'
-DEFAULT_GROUP = 'default'
+PUBLIC_GROUP = 'Public'
 SYSTEM_UPLOADER = 'system'
 ALLOWED_EXTENSIONS = {'.md', '.txt'}
 MAX_FILE_SIZE = 1 * 1024 * 1024              # 最大檔案大小（1MB）

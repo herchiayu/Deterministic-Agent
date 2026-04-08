@@ -1,6 +1,7 @@
-Username,Groups
-Herch,Developer;RD_ME
-User_All,Developer;RD_ME
-User_RD,RD_ME
-User_Dev,Developer
-User_None,
+Username,ReadGroups,WriteGroups
+Boss,All,Public
+Herch,Developer;RD_ME,Developer;RD_ME
+User_All,Developer;RD_ME,Developer;RD_ME
+User_RD,RD_ME,RD_ME
+User_Dev,Developer,Developer
+User_None,Public,

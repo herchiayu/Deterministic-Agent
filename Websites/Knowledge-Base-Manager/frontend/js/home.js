@@ -1,7 +1,7 @@
 // ─── 狀態 ───
 let currentGroup = null;
 let currentFile = null;   // null = 新檔案, string = 編輯中的檔名
-let groups = [];
+let groups = [];          // 可寫入的群組（顯示為 Tab）
 let fileCache = [];       // 當前群組的檔案清單
 let isModified = false;
 
@@ -14,7 +14,7 @@ window.addEventListener('pageshow', async () => {
     }
     const data = await response.json();
     document.getElementById('username-display').textContent = data.username;
-    groups = data.groups.filter(g => g !== 'default');
+    groups = data.write_groups || [];
 
     if (groups.length > 0) {
         switchGroup(groups[0]);

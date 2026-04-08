@@ -204,7 +204,7 @@ class KnowledgeBase:
             top_k = cfg.TOP_K_RESULTS
 
         if not groups:
-            groups = [cfg.DEFAULT_GROUP]
+            groups = [cfg.PUBLIC_GROUP]
 
         query_embedding = self._embed_texts([query])[0]
 

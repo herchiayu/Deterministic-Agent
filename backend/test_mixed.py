@@ -54,13 +54,13 @@ TESTS = [
      'Developer 沒有安規資料 → 應表示不在知識範圍內',
      []),
 
-    # ===== 四、Default 群組 — User_None (無群組) =====
+    # ===== 四、Public 群組 — User_None (無專屬群組，僅可讀 Public) =====
     (11, 'User_None', '請問有什麼資料可以查詢？',
-     'default 群組 → 應回覆「聯絡管理員」類訊息',
+     'Public 群組 → 應回覆「聯絡管理員」類訊息',
      ['管理員']),
 
     (12, 'User_None', '幫我查一下安規要求',
-     'default 群組 → 知識庫只有 notice.md',
+     'Public 群組 → 知識庫只有 notice.md',
      ['管理員']),
 
     # ===== 五、AFC 工程計算 — User_All =====

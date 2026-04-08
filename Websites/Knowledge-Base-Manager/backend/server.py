@@ -89,7 +89,7 @@ def check_auth():
     return jsonify({
         'authenticated': True,
         'username': session['username'],
-        'groups': session.get('groups', []),
+        'write_groups': session.get('write_groups', []),
     }), 200
 
 
@@ -128,8 +128,9 @@ def _get_user_dir(group, username):
     return cfg.KNOWLEDGE_BASE_DIR / group / username
 
 
-def _validate_group_access(group, user_groups):
-    return group in user_groups and group != cfg.DEFAULT_GROUP
+def _validate_write_access(group, write_groups):
+    """檢查使用者是否有該群組的寫入權限"""
+    return group in write_groups
 
 
 @app.route('/api/files')
@@ -137,10 +138,10 @@ def _validate_group_access(group, user_groups):
 def list_files():
     """列出使用者在指定群組中自己的檔案"""
     username = session['username']
-    user_groups = session.get('groups', [])
+    write_groups = session.get('write_groups', [])
     group = request.args.get('group', '').strip()
 
-    if not _validate_group_access(group, user_groups):
+    if not _validate_write_access(group, write_groups):
         return jsonify({'error': '無權限存取此群組'}), 403
 
     user_dir = _get_user_dir(group, username)
@@ -161,11 +162,11 @@ def list_files():
 def get_file_content():
     """讀取檔案內容"""
     username = session['username']
-    user_groups = session.get('groups', [])
+    write_groups = session.get('write_groups', [])
     group = request.args.get('group', '').strip()
     name = request.args.get('name', '').strip()
 
-    if not _validate_group_access(group, user_groups):
+    if not _validate_write_access(group, write_groups):
         return jsonify({'error': '無權限'}), 403
 
     filepath = _get_user_dir(group, username) / name
@@ -188,7 +189,7 @@ def get_file_content():
 def save_file():
     """新增或更新檔案"""
     username = session['username']
-    user_groups = session.get('groups', [])
+    write_groups = session.get('write_groups', [])
     data = request.json or {}
 
     group = data.get('group', '').strip()
@@ -198,8 +199,8 @@ def save_file():
     if not group or not name:
         return jsonify({'error': '缺少群組或檔案名稱'}), 400
 
-    if not _validate_group_access(group, user_groups):
-        return jsonify({'error': '無權限'}), 403
+    if not _validate_write_access(group, write_groups):
+        return jsonify({'error': '無寫入權限'}), 403
 
     # 驗證副檔名
     ext = Path(name).suffix.lower()
@@ -238,7 +239,7 @@ def save_file():
 def delete_file():
     """刪除檔案"""
     username = session['username']
-    user_groups = session.get('groups', [])
+    write_groups = session.get('write_groups', [])
     data = request.json or {}
 
     group = data.get('group', '').strip()
@@ -247,8 +248,8 @@ def delete_file():
     if not group or not name:
         return jsonify({'error': '缺少群組或檔案名稱'}), 400
 
-    if not _validate_group_access(group, user_groups):
-        return jsonify({'error': '無權限'}), 403
+    if not _validate_write_access(group, write_groups):
+        return jsonify({'error': '無寫入權限'}), 403
 
     filepath = _get_user_dir(group, username) / name
 
